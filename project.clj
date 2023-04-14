@@ -5,5 +5,6 @@
             :url "https://www.eclipse.org/legal/epl-2.0/"}
   :dependencies [[org.clojure/clojure "1.11.1"]
                  [enlive "1.1.6"]
-                 [etaoin "1.0.39"]]
+                 [etaoin "1.0.39"]
+                 [org.clojure/data.csv "1.0.1"]]
   :repl-options {:init-ns option-tracker.core})
