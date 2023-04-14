@@ -1,12 +1,8 @@
 (ns option-tracker.core
-  (:require [clj-http.client :as c]
-            [net.cgrand.enlive-html :as html])
+  (:require [net.cgrand.enlive-html :as html]
+            [etaoin.api :as e]
+            [etaoin.keys :as k])
   (:import (java.io ByteArrayInputStream)))
-
-(def stocks ["bbby" "gme" "tmus"])
-(def stocks ["bbby"])
-(def stock "BBBY")
-(def date 1680220800)
 
 ; https://stackoverflow.com/questions/38283891/how-to-wrap-a-string-in-an-input-stream
 (defn string->stream
@@ -17,29 +13,28 @@
        (ByteArrayInputStream.))))
 
 (def a-page (atom {}))
+(defn get-html [driver url]
+  (if (e/running? driver)
+    (do
+      (e/go driver url)
+      (e/wait-visible driver {:css "body"})
+      (e/get-element-inner-html driver {:css "body"}))
+    nil))
 (defn get-page
-  ([stock] (get-page stock nil))
-  ([stock date]
+  ([driver stock] (get-page driver stock nil))
+  ([driver stock date]
    (let [url (if (nil? date)
                (str "https://finance.yahoo.com/quote/" stock "/options?p=" stock)
                (str "https://finance.yahoo.com/quote/" stock "/options?date=" date))
-         page (:body (c/get url {:headers {
-                                           :accept                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7"
-                                           :accept-encoding           "gzip, deflate, br"
-                                           :accept-language           "en-US,en;q=0.9"
-                                           :cache-control             "no-cache"
-                                           :pragma                    "no-cache"
-                                           ;:user-agent "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36"
-                                           :upgrade-insecure-requests "1"
-                                           }}))]
+         page (get-html driver url)]
      (reset! a-page page)
      page)))
 
 (def a-p (atom {}))
 (defn get-and-parse
-  ([stock] (get-and-parse stock nil))
-  ([stock date]
-   (let [p (html/html-resource (string->stream (get-page stock date)))]
+  ([driver stock] (get-and-parse driver stock nil))
+  ([driver stock date]
+   (let [p (html/html-resource (string->stream (get-page driver stock date)))]
      (reset! a-p p)
      p)))
 
@@ -77,17 +72,18 @@
      }
     ))
 
+(def a-search-stock (atom {}))
 (def a-pages (atom {}))
 (defn get-pages [stock]
-  (let [initial-page (page->data (get-and-parse stock))
-        pages (reduce (fn [acc d] (assoc acc d (page->data (get-and-parse stock d))))
-                {}
-                (:available-dates initial-page))]
-    (reset! a-pages pages)
-    pages))
+  (e/with-chrome-headless driver
+                          (let [initial-page (page->data (get-and-parse driver stock))
+                                pages (reduce (fn [acc d] (assoc acc d (page->data (get-and-parse driver stock d))))
+                                              {}
+                                              (map :value (:available-dates initial-page)))]
+                            (reset! a-pages pages)
+                            (reset! a-search-stock stock)
+                            pages)))
 
-(get-pages "BBBY")
-@a-pages
-(page->data (get-and-parse "BBBY"))
+(get-pages "TMUS")
+(prn (str "Loaded options data for " @a-search-stock " " (keys @a-pages)))
 (page->data @a-p)
-(html/select @a-p [:div.controls :select])
